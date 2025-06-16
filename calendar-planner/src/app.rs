@@ -1,5 +1,6 @@
 use chrono::{Duration, Local};
 use crate::model::event::{Event, Recurrence};
+use crate::storage;
 
 pub struct App {
     pub events: Vec<Event>,
@@ -7,17 +8,26 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        let now = Local::now();
-        let event = Event {
-            title: "Test".into(),
-            start: now,
-            end: now + Duration::hours(2),
-            color: Some("blue".into()),
-            recurrence: Recurrence::None,
-        };
+        let events = storage::load_events();
 
-        Self {
-            events: vec![event],
+        if events.is_empty() {
+            let now = Local::now();
+            let event = Event {
+                title: "Test".into(),
+                start: now,
+                end: now + Duration::hours(2),
+                color: Some("blue".into()),
+                recurrence: Recurrence::None,
+            };
+            Self {
+                events: vec![event],
+            }
+        } else {
+            Self { events }
         }
+    }
+
+    pub fn save(&self) {
+        storage::save_events(&self.events);
     }
 }
