@@ -3,12 +3,11 @@ mod model;
 mod ui;
 mod storage;
 
-use app::App;
 use ui::run_ui;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let app = App::new();
-    run_ui(&app.events)?;
-    app.save();
+    let mut events = crate::storage::load_events();
+    run_ui(&mut events)?;
+    crate::storage::save_events(&events)?;
     Ok(())
 }

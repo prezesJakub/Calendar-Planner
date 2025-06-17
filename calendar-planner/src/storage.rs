@@ -13,8 +13,9 @@ pub fn load_events() -> Vec<Event> {
     serde_json::from_reader(reader).unwrap_or_else(|_| Vec::new())
 }
 
-pub fn save_events(events: &[Event]) {
-    let file = File::create(FILE_PATH).expect("Nie udało się zapisać do pliku");
+pub fn save_events(events: &[Event]) -> Result<(), Box<dyn std::error::Error>> {
+    let file = File::create(FILE_PATH)?;
     let writer = BufWriter::new(file);
-    serde_json::to_writer_pretty(writer, events).expect("Nie udało się zserializować danych");
+    serde_json::to_writer_pretty(writer, events)?;
+    Ok(())
 }
