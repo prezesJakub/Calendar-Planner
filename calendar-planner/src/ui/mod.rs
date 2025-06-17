@@ -138,6 +138,17 @@ impl EventForm {
             recurrence,
         })
     }
+
+    fn from_event(event: &Event) -> Self {
+        Self {
+            title: event.title.clone(),
+            start: event.start.format("%Y-%m-%d %H:%M").to_string(),
+            duration: ((event.end - event.start).num_hours()).to_string(),
+            color: event.color.clone().unwrap_or_default(),
+            recurrence: format!("{:?}", event.recurrence),
+            active_field: 0,
+        }
+    }
 }
 
 pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>> {
@@ -150,6 +161,8 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
 
     let mut show_form = false;
     let mut form = EventForm::new();
+    let mut selected: usize = 0;
+    let mut edit_index: Option<usize> = None;
 
     loop {
         terminal.draw(|f| {
@@ -168,11 +181,21 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
                     ))
                 }).collect();
 
+                let mut state = ListState::default();
+                if !events.is_empty() {
+                    state.select(Some(selected));
+                }
+
                 let list = List::new(items)
                     .block(Block::default().title("Wydarzenia").borders(Borders::ALL))
+                    .highlight_style(
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    )
                     .highlight_symbol(">> ");
 
-                f.render_widget(list, size);
+                f.render_stateful_widget(list, size, &mut state);
             }
         })?;
 
@@ -185,11 +208,18 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
                         KeyCode::Esc => {
                             show_form = false;
                             form = EventForm::new();
+                            edit_index = None;
                         }
                         KeyCode::Enter => {
                             if form.active_field == 4 {
                                 if let Some(event) = form.get_event() {
-                                    events.push(event);
+                                    if let Some(index) = edit_index {
+                                        events[index] = event;
+                                        edit_index = None;
+                                    } else {
+                                        events.push(event);
+                                        selected = events.len().saturating_sub(1);
+                                    }
                                     crate::storage::save_events(events)?;
                                     show_form = false;
                                     form = EventForm::new();
@@ -208,11 +238,38 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
                         KeyCode::Char('a') => {
                             show_form = true;
                         }
+                        KeyCode::Char('d') => {
+                            if !events.is_empty() && selected < events.len() {
+                                events.remove(selected);
+                                crate::storage::save_events(events)?;
+                                if events.is_empty() {
+                                    selected = 0;
+                                } else if selected >= events.len() {
+                                    selected = events.len() - 1;
+                                }
+                            }
+                        }
+                        KeyCode::Char('e') => {
+                            if !events.is_empty() && selected < events.len() {
+                                form = EventForm::from_event(&events[selected]);
+                                show_form = true;
+                                edit_index = Some(selected);
+                            }
+                        }
+                        KeyCode::Up => {
+                            if selected > 0 {
+                                selected -= 1;
+                            }
+                        }
+                        KeyCode::Down => {
+                            if selected + 1 < events.len() {
+                                selected += 1;
+                            }
+                        }
                         _ => {}
                     }
                 }
-            }
-            
+            }   
         }
     }
 
