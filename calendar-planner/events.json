@@ -12,5 +12,12 @@
     "end": "2025-06-21T11:45:00+02:00",
     "color": "green",
     "recurrence": "None"
+  },
+  {
+    "title": "Sylwester Marzeń",
+    "start": "2025-12-31T20:00:00+01:00",
+    "end": "2026-01-01T16:00:00+01:00",
+    "color": "blue",
+    "recurrence": "Yearly"
   }
 ]

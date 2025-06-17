@@ -18,6 +18,7 @@ struct EventForm {
     color: String,
     recurrence: String,
     active_field: usize,
+    error_message: Option<String>,
 }
 
 impl EventForm {
@@ -29,6 +30,7 @@ impl EventForm {
             color: String::new(),
             recurrence: String::new(),
             active_field: 0,
+            error_message: None,
         }
     }
 
@@ -48,29 +50,103 @@ impl EventForm {
             .split(area);
 
         let title = Paragraph::new(self.title.as_str())
-            .block(Block::default().title("Tytuł").borders(Borders::ALL));
+            .style(if self.active_field == 0 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            })
+            .block(Block::default().title("Tytuł")
+            .borders(Borders::ALL)
+            .border_style(if self.active_field == 0 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            })
+        );
         f.render_widget(title, chunks[0]);
 
         let start = Paragraph::new(self.start.as_str())
-            .block(Block::default().title("Data rozpoczęcia (RRRR-MM-DD HH:MM)").borders(Borders::ALL));
+            .style(if self.active_field == 1 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            })
+            .block(Block::default().title("Data rozpoczęcia (RRRR-MM-DD HH:MM)")
+            .borders(Borders::ALL)
+            .border_style(if self.active_field == 1 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            })
+        );
         f.render_widget(start, chunks[1]);
 
         let duration = Paragraph::new(self.duration.as_str())
-            .block(Block::default().title("Czas trwania w godzinach").borders(Borders::ALL));
+            .style(if self.active_field == 2 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            })
+            .block(Block::default().title("Czas trwania w godzinach")
+            .borders(Borders::ALL)
+            .border_style(if self.active_field == 2 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            })
+        );
         f.render_widget(duration, chunks[2]);
 
         let color = Paragraph::new(self.color.as_str())
-            .block(Block::default().title("Kolor (opcjonalnie)").borders(Borders::ALL));
+            .style(if self.active_field == 3 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            })
+            .block(Block::default().title("Kolor (opcjonalnie)")
+            .borders(Borders::ALL)
+            .border_style(if self.active_field == 3 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            })
+        );
         f.render_widget(color, chunks[3]);
 
         let recurrence = Paragraph::new(self.recurrence.as_str())
-            .block(Block::default().title("Powtarzanie (None/Daily/Weekly/etc.)").borders(Borders::ALL));
+            .style(if self.active_field == 4 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            })
+            .block(Block::default().title("Powtarzanie (None/Daily/Weekly/etc.)")
+            .borders(Borders::ALL)
+            .border_style(if self.active_field == 4 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            })
+        );
         f.render_widget(recurrence, chunks[4]);
+
+        if let Some(ref msg) = self.error_message {
+            let error_area = Rect {
+                x: area.x,
+                y: area.y + area.height.saturating_sub(3),
+                width: area.width,
+                height: 3,
+            };
+            let paragraph = Paragraph::new(msg.as_str())
+                .style(Style::default().fg(Color::Red))
+                .block(Block::default().title("Błąd").borders(Borders::ALL));
+            f.render_widget(paragraph, error_area);
+        }
     }
 
     fn handle_input(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char(c) => {
+                self.error_message = None;
                 match self.active_field {
                     0 => self.title.push(c),
                     1 => self.start.push(c),
@@ -81,6 +157,7 @@ impl EventForm {
                 }
             }
             KeyCode::Backspace => {
+                self.error_message = None;
                 match self.active_field {
                     0 => { self.title.pop(); }
                     1 => { self.start.pop(); }
@@ -91,7 +168,17 @@ impl EventForm {
                 }
             }
             KeyCode::Enter => {
-                self.active_field = (self.active_field + 1) % 5; // Przełącz na następne pole
+                self.active_field = (self.active_field + 1) % 5;
+            }
+            KeyCode::Up => {
+                if self.active_field > 0 {
+                    self.active_field -= 1;
+                }
+            }
+            KeyCode::Down => {
+                if self.active_field < 4 {
+                    self.active_field += 1;
+                }
             }
             _ => {}
         }
@@ -147,7 +234,31 @@ impl EventForm {
             color: event.color.clone().unwrap_or_default(),
             recurrence: format!("{:?}", event.recurrence),
             active_field: 0,
+            error_message: None,
         }
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.title.trim().is_empty() {
+            return Err("Tytuł nie może być pusty.".to_string());
+        }
+
+        if NaiveDateTime::parse_from_str(&self.start, "%Y-%m-%d %H:%M").is_err() {
+            return Err("Niepoprawny format daty rozpoczęcia.".to_string());
+        }
+
+        let hours: i64 = self.duration.parse().map_err(|_| "Czas trwania musi być liczbą.")?;
+        if hours <= 0 {
+            return Err("Czas trwania musi być większy niż 0.".to_string());
+        }
+
+        let allowed = ["none", "daily", "weekly", "biweekly", "monthly", "yearly"];
+        if !self.recurrence.trim().is_empty()
+            && !allowed.contains(&self.recurrence.to_lowercase().as_str()) {
+                return Err("Niepoprawna wartość pola 'Powtarzanie'.".to_string());
+        }
+
+        Ok(())
     }
 }
 
@@ -212,17 +323,26 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
                         }
                         KeyCode::Enter => {
                             if form.active_field == 4 {
-                                if let Some(event) = form.get_event() {
-                                    if let Some(index) = edit_index {
-                                        events[index] = event;
-                                        edit_index = None;
-                                    } else {
-                                        events.push(event);
-                                        selected = events.len().saturating_sub(1);
+                                match form.validate() {
+                                    Ok(()) => {
+                                        if let Some(event) = form.get_event() {
+                                            if let Some(index) = edit_index {
+                                                events[index] = event;
+                                                edit_index = None;
+                                            } else {
+                                                events.push(event);
+                                                selected = events.len().saturating_sub(1);
+                                            }
+                                            crate::storage::save_events(events)?;
+                                            show_form = false;
+                                            form = EventForm::new();
+                                        } else {
+                                            form.error_message = Some("Nie udało się utworzyć wydarzenia.".to_string());
+                                        }
                                     }
-                                    crate::storage::save_events(events)?;
-                                    show_form = false;
-                                    form = EventForm::new();
+                                    Err(msg) => {
+                                        form.error_message = Some(msg);
+                                    }
                                 }
                             } else {
                                 form.handle_input(key);
