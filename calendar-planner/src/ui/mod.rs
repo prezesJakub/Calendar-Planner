@@ -280,13 +280,23 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
 
     loop {
         let now = Local::now();
-        let visible_events: Vec<(usize, &Event)> = events
+        let future_limit = Local::now() + Duration::weeks(200);
+        let mut expanded: Vec<Event> = Vec::new();
+
+        let mut index_map: Vec<(usize, Event)> = Vec::new();
+        for (idx, event) in events.iter().enumerate() {
+            let occurrences = event.generate_occurrences(future_limit);
+            index_map.extend(occurrences.into_iter().map(|e| (idx, e)));
+        }
+
+        let visible_events: Vec<(usize, &Event)> = index_map
             .iter()
             .enumerate()
-            .filter(|(_, e)| {
+            .filter(|(_, (_, e))| {
                 (!show_only_upcoming || e.start >= now)
                     && (filter_color.is_none() || e.color.as_deref() == filter_color.as_deref())
             })
+            .map(|(_, (original_index, e))| (*original_index, e))
             .collect();
 
         let mut visible_events = visible_events;
@@ -396,19 +406,29 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
                         KeyCode::Char('d') => {
                             if !visible_events.is_empty() && selected < visible_events.len() {
                                 let index_in_events = visible_events[selected].0;
-                                events.remove(index_in_events);
+                                let recurring = events[index_in_events].recurrence != Recurrence::None;
+
+                                if recurring {
+                                    let event_to_remove = events[index_in_events].clone();
+                                    events.retain(|e| e != &event_to_remove);
+                                } else {
+                                    events.remove(index_in_events);
+                                }
+
                                 crate::storage::save_events(events)?;
                                 if events.is_empty() {
                                     selected = 0;
-                                } else if selected >= events.len() {
-                                    selected = selected.saturating_sub(1);
+                                } else if selected >= visible_events.len() {
+                                    selected = visible_events.len().saturating_sub(1);
                                 }
                             }
                         }
                         KeyCode::Char('e') => {
                             if !visible_events.is_empty() && selected < visible_events.len() {
                                 let index_in_events = visible_events[selected].0;
-                                form = EventForm::from_event(&events[index_in_events]);
+                                let original_event = &events[index_in_events];
+
+                                form = EventForm::from_event(original_event);
                                 show_form = true;
                                 edit_index = Some(index_in_events);
                             }
@@ -451,7 +471,7 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
                             }
                         }
                         KeyCode::Down => {
-                            if selected + 1 < events.len() {
+                            if selected + 1 < visible_events.len() {
                                 selected += 1;
                             }
                         }
