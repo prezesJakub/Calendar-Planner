@@ -2,6 +2,7 @@ mod app;
 mod model;
 mod ui;
 mod storage;
+mod utils;
 
 use ui::run_ui;
 

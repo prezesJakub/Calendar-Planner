@@ -8,8 +8,8 @@ use crossterm::event::{KeyCode, EnableMouseCapture, DisableMouseCapture, KeyEven
 use crossterm::execute;
 use crossterm::terminal::{enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use chrono::{DateTime, Local, NaiveDateTime, Duration, TimeZone};
-
 use crate::model::event::{Event, Recurrence};
+use crate::utils::color::parse_color;
 
 struct EventForm {
     title: String,
@@ -276,13 +276,17 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
     let mut edit_index: Option<usize> = None;
     let mut sort_asc = true;
     let mut show_only_upcoming = false;
+    let mut filter_color: Option<String> = None;
 
     loop {
         let now = Local::now();
         let visible_events: Vec<(usize, &Event)> = events
             .iter()
             .enumerate()
-            .filter(|(_, e)| !show_only_upcoming || e.start >= now)
+            .filter(|(_, e)| {
+                (!show_only_upcoming || e.start >= now)
+                    && (filter_color.is_none() || e.color.as_deref() == filter_color.as_deref())
+            })
             .collect();
 
         let mut visible_events = visible_events;
@@ -299,12 +303,18 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
                 form.render(f, form_area);
             } else {
                 let items: Vec<ListItem> = visible_events.iter().map(|(_, e)| {
+                    let style = if let Some(ref c) = e.color {
+                        Style::default().fg(parse_color(c))
+                    } else {
+                        Style::default()
+                    };
+
                     ListItem::new(format!(
                         "{}\n{} - {}\n",
                         e.title,
                         e.start.format("%Y-%m-%d %H:%M"),
                         e.end.format("%Y-%m-%d %H:%M")
-                    ))
+                    )).style(style)
                 }).collect();
 
                 let mut state = ListState::default();
@@ -322,9 +332,10 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
                     .highlight_symbol(">> ");
 
                 let info = Paragraph::new(format!(
-                    "[s] Sortowanie: {}  |  [f] Filtrowanie: {}",
+                    "[s] Sortowanie: {}  |  [f] Filtrowanie: {} |  [c] Kolor: {}",
                     if sort_asc { "Rosnąco" } else { "Malejąco" },
-                    if show_only_upcoming { "Tylko nadchodzące" } else { "Wszystkie" }
+                    if show_only_upcoming { "Tylko nadchodzące" } else { "Wszystkie" },
+                    filter_color.clone().unwrap_or("Wszystkie".to_string())
                 ))
                 .style(Style::default().fg(Color::Gray));
                 f.render_widget(info, Rect::new(0, 0, size.width, 1));
@@ -408,6 +419,31 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
                         KeyCode::Char('f') => {
                             show_only_upcoming = !show_only_upcoming;
                             selected = 0;
+                        }
+                        KeyCode::Char('c') => {
+                            let mut colors: Vec<String> = events.iter()
+                                .filter_map(|e| e.color.clone())
+                                .collect();
+                            colors.sort();
+                            colors.dedup();
+
+                            if colors.is_empty() {
+                                filter_color = None;
+                            } else {
+                                let current = filter_color.clone();
+                                let next = match current {
+                                    None => Some(colors[0].clone()),
+                                    Some(curr) => {
+                                        let idx = colors.iter().position(|c| *c == curr);
+                                        match idx {
+                                            Some(i) if i + 1 < colors.len() => Some(colors[i + 1].clone()),
+                                            _ => None,
+                                        }
+                                    }
+                                };
+                                filter_color = next;
+                                selected = 0;
+                            }
                         }
                         KeyCode::Up => {
                             if selected > 0 {
