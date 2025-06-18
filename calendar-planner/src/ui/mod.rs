@@ -1,4 +1,5 @@
 use std::io;
+use std::thread::current;
 use ratatui::{
     prelude::*,
     widgets::*
@@ -7,7 +8,7 @@ use crossterm::event;
 use crossterm::event::{KeyCode, EnableMouseCapture, DisableMouseCapture, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
-use chrono::{DateTime, Local, NaiveDateTime, Duration, TimeZone};
+use chrono::{DateTime, Datelike, Duration, Local, NaiveDateTime, TimeZone};
 use crate::model::event::{Event, Recurrence};
 use crate::utils::color::parse_color;
 
@@ -270,6 +271,14 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
     let mut terminal = Terminal::new(backend)?;
     terminal.hide_cursor()?;
 
+    #[derive(PartialEq)]
+    enum ViewMode {
+        All,
+        Week,
+        Month,
+        Year,
+    }
+
     let mut show_form = false;
     let mut form = EventForm::new();
     let mut selected: usize = 0;
@@ -277,6 +286,8 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
     let mut sort_asc = true;
     let mut show_only_upcoming = false;
     let mut filter_color: Option<String> = None;
+    let mut view_mode = ViewMode::All;
+    let mut current_date = Local::now().date_naive();
 
     loop {
         let now = Local::now();
@@ -293,8 +304,25 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
             .iter()
             .enumerate()
             .filter(|(_, (_, e))| {
-                (!show_only_upcoming || e.start >= now)
+                let matches_view = match view_mode {
+                    ViewMode::All => true,
+                    ViewMode::Week => {
+                        let week_start = current_date
+                            - chrono::Duration::days(current_date.weekday().num_days_from_monday() as i64);
+                        let week_end = week_start + chrono::Duration::days(6);
+                        e.start.date_naive() >= week_start && e.start.date_naive() <= week_end
+                    }
+                    ViewMode::Month => {
+                        e.start.year() == current_date.year()
+                            && e.start.month() == current_date.month()
+                    }
+                    ViewMode::Year => e.start.year() == current_date.year(),
+                };
+
+                matches_view
+                    && (!show_only_upcoming || e.start >= now)
                     && (filter_color.is_none() || e.color.as_deref() == filter_color.as_deref())
+                
             })
             .map(|(_, (original_index, e))| (*original_index, e))
             .collect();
@@ -342,15 +370,35 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
                     .highlight_symbol(">> ");
 
                 let info = Paragraph::new(format!(
-                    "[s] Sortowanie: {}  |  [f] Filtrowanie: {} |  [c] Kolor: {}",
+                    "[s] Sortowanie: {} | [f] Filtrowanie: {} | [c] Kolor: {} | [v] Widok: {}",
                     if sort_asc { "Rosnąco" } else { "Malejąco" },
                     if show_only_upcoming { "Tylko nadchodzące" } else { "Wszystkie" },
-                    filter_color.clone().unwrap_or("Wszystkie".to_string())
+                    filter_color.clone().unwrap_or("Wszystkie".to_string()),
+                    match view_mode {
+                        ViewMode::All => "Wszystko",
+                        ViewMode::Week => "Tydzień",
+                        ViewMode::Month => "Miesiąc",
+                        ViewMode::Year => "Rok",
+                    }
                 ))
                 .style(Style::default().fg(Color::Gray));
                 f.render_widget(info, Rect::new(0, 0, size.width, 1));
 
-                let list_area = Rect::new(0, 1, size.width, size.height - 1);
+                let view_info = Paragraph::new(match view_mode {
+                    ViewMode::All => "Widok: Ogólny".to_string(),
+                    ViewMode::Week => {
+                        let start = current_date - chrono::Duration::days(current_date.weekday().num_days_from_monday() as i64);
+                        let end = start + chrono::Duration::days(6);
+                        format!("Widok: Tydzień {} - {}", start.format("%Y-%m-%d"), end.format("%Y-%m-%d"))
+                    }
+                    ViewMode::Month => format!("Widok: Miesiąc {}", current_date.format("%Y-%m")),
+                    ViewMode::Year => format!("Widok: Rok {}", current_date.format("%Y")),
+                })
+                .style(Style::default().fg(Color::Blue));
+
+                f.render_widget(view_info, Rect::new(0, 1, size.width, 1));
+
+                let list_area = Rect::new(0, 2, size.width, size.height - 2);
                 f.render_stateful_widget(list, list_area, &mut state);
             }
         })?;
@@ -463,6 +511,39 @@ pub fn run_ui(events: &mut Vec<Event>) -> Result<(), Box<dyn std::error::Error>>
                                 };
                                 filter_color = next;
                                 selected = 0;
+                            }
+                        }
+                        KeyCode::Char('v') => {
+                            view_mode = match view_mode {
+                                ViewMode::All => ViewMode::Week,
+                                ViewMode::Week => ViewMode::Month,
+                                ViewMode::Month => ViewMode::Year,
+                                ViewMode::Year => ViewMode::All,
+                            };
+                            selected = 0;
+                        }
+                        KeyCode::Left => {
+                            match view_mode {
+                                ViewMode::Week => current_date -= chrono::Duration::weeks(1),
+                                ViewMode::Month => current_date = current_date.with_day(1).unwrap()
+                                    - chrono::Duration::days(1),
+                                ViewMode::Year => current_date = current_date
+                                    .with_month(1).unwrap()
+                                    .with_day(1).unwrap()
+                                    - chrono::Duration::days(1),
+                                _ => {},
+                            }
+                        }
+                        KeyCode::Right => {
+                            match view_mode {
+                                ViewMode::Week => current_date += chrono::Duration::weeks(1),
+                                ViewMode::Month => current_date = current_date.with_day(1).unwrap()
+                                    + chrono::Duration::days(32),
+                                ViewMode::Year => current_date = current_date
+                                    .with_month(1).unwrap()
+                                    .with_day(1).unwrap()
+                                    + chrono::Duration::days(366),
+                                _ => {}, 
                             }
                         }
                         KeyCode::Up => {
