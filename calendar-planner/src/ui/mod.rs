@@ -88,7 +88,7 @@ impl EventForm {
             } else {
                 Style::default()
             })
-            .block(Block::default().title("Czas trwania w godzinach")
+            .block(Block::default().title("Czas trwania (np. 1.5 lub 1:30)")
             .borders(Borders::ALL)
             .border_style(if self.active_field == 2 {
                 Style::default().fg(Color::Yellow)
@@ -196,12 +196,24 @@ impl EventForm {
             None => return None,
         };
 
-         let hours: i64 = match self.duration.parse() {
-            Ok(h) => h,
-            Err(_) => return None,
+        let duration_str = self.duration.trim();
+
+        let total_minutes = if let Some((h, m)) = duration_str.split_once(':') {
+            match (h.trim().parse::<i64>(), m.trim().parse::<i64>()) {
+                (Ok(h), Ok(m)) => h * 60 + m,
+                _ => return None,
+            }
+        } else if let Ok(hf) = duration_str.parse::<f64>() {
+            (hf * 60.0).round() as i64
+        } else {
+            return None;
         };
 
-        let end = start + Duration::hours(hours);
+        if total_minutes <= 0 {
+            return None;
+        }
+
+        let end = start + Duration::minutes(total_minutes);
 
         let color = if self.color.is_empty() {
             None
@@ -231,7 +243,11 @@ impl EventForm {
         Self {
             title: event.title.clone(),
             start: event.start.format("%Y-%m-%d %H:%M").to_string(),
-            duration: ((event.end - event.start).num_hours()).to_string(),
+            duration: format!(
+                "{}:{:02}",
+                (event.end - event.start).num_minutes() / 60,
+                (event.end - event.start).num_minutes() % 60
+            ),
             color: event.color.clone().unwrap_or_default(),
             recurrence: format!("{:?}", event.recurrence),
             active_field: 0,
@@ -248,8 +264,20 @@ impl EventForm {
             return Err("Niepoprawny format daty rozpoczęcia.".to_string());
         }
 
-        let hours: i64 = self.duration.parse().map_err(|_| "Czas trwania musi być liczbą.")?;
-        if hours <= 0 {
+        let duration_str = self.duration.trim();
+
+        let total_minutes = if let Some((h, m)) = duration_str.split_once(':') {
+            match (h.trim().parse::<i64>(), m.trim().parse::<i64>()) {
+                (Ok(h), Ok(m)) => h * 60 + m,
+                _ => return Err("Czas trwania musi mieć poprawny format (np. 1:30 lub 1.5).".to_string()),
+            }
+        } else if let Ok(hf) = duration_str.parse::<f64>() {
+            (hf * 60.0).round() as i64
+        } else {
+            return Err("Czas trwania musi mieć poprawny format (np. 1:30 lub 1.5).".to_string());
+        };
+
+        if total_minutes <= 0 {
             return Err("Czas trwania musi być większy niż 0.".to_string());
         }
 
