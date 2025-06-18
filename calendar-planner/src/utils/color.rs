@@ -10,6 +10,7 @@ pub fn parse_color(name: &str) -> Color {
         "magenta" => Color::Magenta,
         "gray" => Color::Gray,
         "white" => Color::White,
+        "orange" => Color::Rgb(255, 165, 0),
         _ => Color::White,
     }
 }
