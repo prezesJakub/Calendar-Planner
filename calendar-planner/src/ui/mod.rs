@@ -8,7 +8,7 @@ use crossterm::event;
 use crossterm::event::{KeyCode, EnableMouseCapture, DisableMouseCapture, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
-use chrono::{DateTime, Datelike, Duration, Local, NaiveDateTime, TimeZone};
+use chrono::{DateTime, Datelike, Duration, Local, NaiveDateTime, TimeZone, Months};
 use crate::model::event::{Event, Recurrence};
 use crate::utils::color::parse_color;
 

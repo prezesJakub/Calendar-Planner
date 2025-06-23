@@ -33,5 +33,12 @@
     "end": "2004-08-15T23:55:00+02:00",
     "color": "magenta",
     "recurrence": "Yearly"
+  },
+  {
+    "title": "Wydarzenie",
+    "start": "2026-03-01T03:01:00+01:00",
+    "end": "2026-03-01T09:01:00+01:00",
+    "color": "magenta",
+    "recurrence": "Biweekly"
   }
 ]

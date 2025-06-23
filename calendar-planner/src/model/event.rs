@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, Local, Datelike};
+use chrono::{DateTime, Duration, Local, Datelike, Months};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -45,9 +45,10 @@ impl Event {
                 Recurrence::Weekly => current_start + Duration::weeks(1),
                 Recurrence::Biweekly => current_start + Duration::weeks(2),
                 Recurrence::Monthly => {
-                    match current_start.with_month(current_start.month() % 12 + 1) {
-                        Some(new_date) => new_date,
-                        None => break,
+                    if let Some(new_start) = current_start.checked_add_months(Months::new(1)) {
+                        new_start
+                    } else {
+                        break;
                     }
                 }
                 Recurrence::Yearly => {
